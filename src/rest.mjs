@@ -1,7 +1,7 @@
 // The REST v3 surface under /api/v3. One store backs every route here and every MCP tool, so
 // an object written over one surface reads back over the other with the same id.
 
-import { state, findRepo, createRepo, repoView, createIssue, listIssues, patchIssue, issueView, issueWireBytes, createPull, pullView, mergePull, closePull, createLabel, commitView, commitPaths, fileAt, tipOf, writeFile, blobSha, tick, iso } from './store.mjs';
+import { state, findRepo, createRepo, repoView, createIssue, listIssues, patchIssue, issueView, issueWireBytes, createPull, pullView, mergePull, closePull, createLabel, commitView, commitPaths, fileAt, tipOf, writeFile, blobSha, tick, iso, listComments } from './store.mjs';
 import { sendJson, sendJsonBytes, sendError, notFound, readJson, authorized } from './http.mjs';
 
 /** One path segment, decoded (a malformed escape stays as it came). */
@@ -306,6 +306,21 @@ export async function handleRest(req, res, path, query, origin) {
     const number = Number.parseInt(rest[1], 10);
     const issue = repo.issueByNumber.get(number);
     if (issue === undefined) return sendError(res, 404, 'Not Found');
+    if (rest.length === 3 && rest[2] === 'comments' && method === 'GET') {
+      const base = `https://github.local/api/v3/repos/${repo.full_name}`;
+      const comments = listComments(repo, issue).map((comment) => ({
+        id: comment.id,
+        node_id: comment.node_id,
+        body: comment.body,
+        user: comment.user,
+        created_at: comment.created_at,
+        updated_at: comment.updated_at,
+        issue_url: `${base}/issues/${issue.number}`,
+        url: `${base}/issues/comments/${comment.id}`,
+        html_url: `https://github.local/${repo.full_name}/issues/${issue.number}#issuecomment-${comment.id}`,
+      }));
+      return sendJson(res, 200, comments);
+    }
     if (method === 'GET') {
       return sendJsonBytes(res, 200, issueWireBytes(repo, issue));
     }

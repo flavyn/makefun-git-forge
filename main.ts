@@ -8,6 +8,7 @@ import http from 'node:http';
 import { configure, state } from './src/store.mjs';
 import { handleRest } from './src/rest.mjs';
 import { handleMcp } from './src/mcp.mjs';
+import { handleGraphql } from './src/graphql.mjs';
 import { handleGit } from './src/git.mjs';
 import { sendJson, notFound, readBody } from './src/http.mjs';
 
@@ -38,6 +39,11 @@ async function route(req, res) {
 
   if (path === '/mcp' || path.startsWith('/mcp/')) {
     await handleMcp(req, res);
+    return;
+  }
+
+  if (path === '/api/graphql') {
+    await handleGraphql(req, res);
     return;
   }
 

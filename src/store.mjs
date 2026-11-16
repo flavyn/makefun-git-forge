@@ -19,7 +19,7 @@ export const state = {
   login: 'agent',
   token: '',
   repos: new Map(),
-  seq: { repo: 0, issue: 0, pull: 0, label: 0, clock: 0, request: 0 },
+  seq: { repo: 0, issue: 0, pull: 0, label: 0, comment: 0, clock: 0, request: 0 },
 };
 
 /**
@@ -543,4 +543,77 @@ export function registerCommit(repo, sha) {
   };
   repo.commits.set(sha, commit);
   return commit;
+}
+
+// ---------------------------------------------------------------- global ids
+
+/** The Relay id a repository answers: opaque, stable, never the plain databaseId. */
+export function repoGlobalId(repo) {
+  return `R_${repo.id}`;
+}
+
+/** The repository a global id names, or null. */
+export function findRepoById(id) {
+  for (const repo of state.repos.values()) if (repoGlobalId(repo) === id) return repo;
+  return null;
+}
+
+/** The issue a global id names (`I_<issue id>`), or null. */
+export function findIssueById(id) {
+  for (const repo of state.repos.values()) {
+    for (const issue of repo.issues) if (`I_${issue.id}` === id) return { repo, issue };
+  }
+  return null;
+}
+
+/** The pull request a global id names (`PR_<pull id>`), or null. */
+export function findPullById(id) {
+  for (const repo of state.repos.values()) {
+    for (const pull of repo.pulls) if (`PR_${pull.id}` === id) return { repo, pull };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- comments
+
+/** Add one comment to an issue; the issue's own count moves with it. */
+export function addComment(repo, issue, body) {
+  const ts = tick();
+  const id = nextId('comment');
+  const comment = {
+    id,
+    node_id: `IC_${id}`,
+    body: typeof body === 'string' ? body : '',
+    issue,
+    user: { login: repo.owner, id: 1, type: 'User', site_admin: false },
+    created_at: iso(ts),
+    updated_at: iso(ts),
+  };
+  repo.comments.set(id, comment);
+  issue.commentCount += 1;
+  touchIssue(repo, issue);
+  return comment;
+}
+
+/** Every comment on one issue, in creation order. */
+export function listComments(repo, issue) {
+  const out = [];
+  for (const comment of repo.comments.values()) if (comment.issue === issue) out.push(comment);
+  return out;
+}
+
+/** The paths a pull request changes: every file whose blob differs between base and head. */
+export function pullChangedPaths(repo, pull) {
+  const head = repo.commits.get(pull.headSha);
+  const base = repo.commits.get(pull.baseSha);
+  const headFlat = head === undefined ? new Map() : head.flat;
+  const baseFlat = base === undefined ? new Map() : base.flat;
+  const paths = [];
+  for (const [path, entry] of headFlat) {
+    const before = baseFlat.get(path);
+    if (before === undefined || before.sha !== entry.sha) paths.push(path);
+  }
+  for (const [path] of baseFlat) if (!headFlat.has(path)) paths.push(path);
+  paths.sort();
+  return paths;
 }

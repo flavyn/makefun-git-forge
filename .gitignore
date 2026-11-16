@@ -1,0 +1,3 @@
+﻿# Trial output and local logs never ship inside the entry.
+*.log
+node_modules/

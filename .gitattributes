@@ -1,0 +1,3 @@
+# Bytes are shipped as authored: no CRLF rewriting on the way in or out, so the committed
+# entry is byte-identical to the working file a pack or a submit reads.
+* -text

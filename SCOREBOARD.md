@@ -169,3 +169,44 @@ forge\ghclone-rig\smoke-graphql.mjs  enam dokumen GraphQL + batch
 
 `run-suite.mjs` adalah alat yang menjawab tanpa menebak: pesan per-check hanya keluar
 kalau env dijalankan sendiri, bukan lewat grade-local.
+
+## Dekomposisi biaya push — diukur, bukan diperkirakan (2026-11-17 01:45 WIB)
+
+Instrumentasi pada **salinan** entri di `forge\perf-run3\bot` (tree utama tidak disentuh),
+timer per fase di `handleGit`, 668 panggilan receive-pack dan 369 upload-pack:
+
+```
+receive-pack (push)   body 0,171 ms + kerja git 0,569 ms  = 0,74 ms di server
+                      pack rata-rata 1.070 B
+upload-pack  (clone)  body 0,083 ms + kerja git 0,281 ms  = 0,36 ms di server
+```
+
+Dibandingkan yang diukur harness pada HEAD 91dd8df (666,280 ms / 200 push = 3,33 ms/op):
+
+```
+3,33 ms/op  =  0,74 ms server  +  2,59 ms klien harness (bangun commit+tree+blob+pack, undici)
+bagian server = 22% dari satu push
+```
+
+Konsekuensi yang menentukan keputusan tuning:
+
+```
+server dibuat NOL sekalipun: 666 -> 518 ms -> push 41 -> 45 poin  (+4 perf)
+   dan itu tepat sama dengan gap 953 -> 957 yang dicari
+kerja git dipotong SETENGAH:  666 -> 592 ms -> push 41 -> 43 poin  (+2 perf)
+```
+
+Jadi gap 4 poin perf **tidak bisa** ditutup dari kode: 78% biaya push ada di klien harness
+yang juga masuk T_ref. Yang bisa dilakukan hanya memotong 0,57 ms kerja git, dan hasilnya +1..+2.
+
+Catatan penting untuk membaca angka perf lokal: `perf 134` pada run instrumentasi itu bukan
+kemunduran kode (`passed` tetap 120/120) — mesin sedang dipakai, dan bagian klien ikut membengkak
+(push 1.114 ms = 5,57 ms/op, server tetap 0,74). Itu memperkuat aturan: satu run perf tidak
+menyimpulkan apa pun.
+
+## Ringkasan status
+
+```
+HEAD 91dd8df · tree 118.915 B · 120/120 · feature 600 + agent 200 · perf 149-153 terukur
+skor 949-953 di Node 22; 971 pada satu run env langsung -> variance mesin, bukan kode
+```

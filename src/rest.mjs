@@ -1,7 +1,7 @@
 // The REST v3 surface under /api/v3. One store backs every route here and every MCP tool, so
 // an object written over one surface reads back over the other with the same id.
 
-import { state, findRepo, createRepo, repoView, createIssue, listIssues, patchIssue, issueView, issueWireBytes, createPull, pullView, mergePull, closePull, createLabel, commitView, commitPaths, fileAt, tipOf, writeFile, blobSha, tick, iso, listComments } from './store.mjs';
+import { state, findRepo, createRepo, repoView, createIssue, listIssues, patchIssue, issueView, issueWireBytes, createPull, pullView, mergePull, closePull, createLabel, commitView, commitPaths, fileAt, tipOf, writeFile, blobSha, tick, iso, listComments, addComment, pullChangedPaths } from './store.mjs';
 import { sendJson, sendJsonBytes, sendError, notFound, readJson, authorized } from './http.mjs';
 
 /** One path segment, decoded (a malformed escape stays as it came). */
@@ -72,7 +72,7 @@ function linkHeader(origin, path, query, page, per, total) {
   const next = new URLSearchParams(query);
   next.set('page', String(page + 1));
   next.set('per_page', String(per));
-  return { link: `<${origin}${path}?${next.toString()}>; rel="next"` };
+  return { link: `<${origin}/api/v3${path}?${next.toString()}>; rel="next"` };
 }
 
 /**
@@ -176,8 +176,35 @@ export async function handleRest(req, res, path, query, origin) {
     if (method === 'GET') {
       const branch = query.get('ref') ?? repo.default_branch;
       const entry = fileAt(repo, branch, filePath);
-      if (entry === null) return sendError(res, 404, 'Not Found');
-      return sendJson(res, 200, contentView(repo, filePath, entry, blobBody(repo, entry)));
+      if (entry !== null) return sendJson(res, 200, contentView(repo, filePath, entry, blobBody(repo, entry)));
+      // A directory answers the entries directly under it, GitHub's listing shape.
+      const tip = tipOf(repo, branch);
+      const prefix = filePath === '' ? '' : `${filePath}/`;
+      const listed = new Map();
+      if (tip !== null) {
+        for (const [candidate, found] of tip.flat) {
+          if (!candidate.startsWith(prefix)) continue;
+          const remainder = candidate.slice(prefix.length);
+          const slash = remainder.indexOf('/');
+          const name = slash < 0 ? remainder : remainder.slice(0, slash);
+          if (name === '') continue;
+          const path = `${prefix}${name}`;
+          if (slash >= 0) {
+            if (!listed.has(path)) listed.set(path, { type: 'dir', name, path, sha: found.sha, size: 0 });
+            continue;
+          }
+          listed.set(path, { type: 'file', name, path, sha: found.sha, size: found.size ?? 0 });
+        }
+      }
+      if (listed.size === 0) return sendError(res, 404, 'Not Found');
+      const base = `https://github.local/api/v3/repos/${repo.full_name}/contents`;
+      const entries = [...listed.values()].sort((left, right) => left.name.localeCompare(right.name)).map((item) => ({
+        ...item,
+        url: `${base}/${item.path}`,
+        html_url: `https://github.local/${repo.full_name}/blob/${branch}/${item.path}`,
+        git_url: `${base}/${item.path}`,
+      }));
+      return sendJson(res, 200, entries);
     }
     if (method === 'PUT') {
       const parsed = await readJson(req);
@@ -186,6 +213,11 @@ export async function handleRest(req, res, path, query, origin) {
       if (typeof body.content !== 'string') return sendError(res, 422, 'content is required');
       const branch = typeof body.branch === 'string' && body.branch !== '' ? body.branch : repo.default_branch;
       const existed = fileAt(repo, branch, filePath) !== null;
+      // GitHub's PUT answers {content: {...file...}, commit: {...}}, never the file on its own.
+      if (typeof body.sha === 'string' && body.sha !== '') {
+        const current = fileAt(repo, branch, filePath);
+        if (current === null || current.sha !== body.sha) return sendError(res, 409, 'sha does not match');
+      }
       const tip = tipOf(repo, branch);
       const flat = tip === null ? new Map() : new Map(tip.flat);
       const entry = writeFile(repo, Buffer.from(body.content, 'base64'));
@@ -193,8 +225,10 @@ export async function handleRest(req, res, path, query, origin) {
       const message = typeof body.message === 'string' && body.message !== '' ? body.message : `Update ${filePath}`;
       const sha = commitPaths(repo, branch, flat, message);
       repo.pushed_at = repo.updated_at = iso(tick());
-      const answer = contentView(repo, filePath, entry, blobBody(repo, entry));
-      answer.commit = commitAnswer(repo, sha, message);
+      const answer = {
+        content: contentView(repo, filePath, entry, blobBody(repo, entry)),
+        commit: commitAnswer(repo, sha, message),
+      };
       return sendJson(res, existed ? 200 : 201, answer);
     }
     if (method === 'DELETE') {
@@ -295,6 +329,9 @@ export async function handleRest(req, res, path, query, origin) {
       }
       if (method === 'GET') {
         const issues = listIssues(repo, { state: query.get('state') ?? 'open' });
+        // GitHub sorts created-descending by default; direction=asc reverses it.
+        const direction = query.get('direction') === 'asc' ? 1 : -1;
+        issues.sort((left, right) => direction * (left.number - right.number));
         const per = perPage(query);
         const page = pageOf(query);
         const slice = issues.slice((page - 1) * per, page * per);
@@ -306,9 +343,9 @@ export async function handleRest(req, res, path, query, origin) {
     const number = Number.parseInt(rest[1], 10);
     const issue = repo.issueByNumber.get(number);
     if (issue === undefined) return sendError(res, 404, 'Not Found');
-    if (rest.length === 3 && rest[2] === 'comments' && method === 'GET') {
+    if (rest.length === 3 && rest[2] === 'comments') {
       const base = `https://github.local/api/v3/repos/${repo.full_name}`;
-      const comments = listComments(repo, issue).map((comment) => ({
+      const view = (comment) => ({
         id: comment.id,
         node_id: comment.node_id,
         body: comment.body,
@@ -318,8 +355,16 @@ export async function handleRest(req, res, path, query, origin) {
         issue_url: `${base}/issues/${issue.number}`,
         url: `${base}/issues/comments/${comment.id}`,
         html_url: `https://github.local/${repo.full_name}/issues/${issue.number}#issuecomment-${comment.id}`,
-      }));
-      return sendJson(res, 200, comments);
+      });
+      if (method === 'POST') {
+        const parsed = await readJson(req);
+        if (!parsed.ok) return sendError(res, 400, 'Problems parsing JSON');
+        if (typeof parsed.value?.body !== 'string') return sendError(res, 422, 'body is required');
+        return sendJson(res, 201, view(addComment(repo, issue, parsed.value.body)));
+      }
+      if (method === 'GET') {
+        return sendJson(res, 200, listComments(repo, issue).map(view));
+      }
     }
     if (method === 'GET') {
       return sendJsonBytes(res, 200, issueWireBytes(repo, issue));
@@ -360,9 +405,44 @@ export async function handleRest(req, res, path, query, origin) {
       if (pull === undefined) return sendError(res, 404, 'Not Found');
       const parsed = await readJson(req);
       if (!parsed.ok) return sendError(res, 400, 'Problems parsing JSON');
+      // A base that moved onto a path the head also changed is a conflict, not a merge.
+      const baseTip = tipOf(repo, pull.base);
+      if (baseTip !== null && pull.baseSha !== baseTip.sha) {
+        const headChanged = new Set(pullChangedPaths(repo, pull));
+        const baseCommit = repo.commits.get(pull.baseSha);
+        const baseFlat = baseCommit === undefined ? new Map() : baseCommit.flat;
+        const moved = [];
+        for (const [candidate, entry] of baseTip.flat) {
+          const before = baseFlat.get(candidate);
+          if (before === undefined || before.sha !== entry.sha) moved.push(candidate);
+        }
+        if (moved.some((candidate) => headChanged.has(candidate))) return sendError(res, 405, 'Pull Request is not mergeable');
+      }
       const merged = mergePull(repo, pull, parsed.value ?? {});
-      if (merged.error !== undefined) return sendError(res, merged.error === 'already merged' ? 405 : 405, 'Pull Request is not mergeable');
+      if (merged.error !== undefined) return sendError(res, 405, 'Pull Request is not mergeable');
       return sendJson(res, 200, { sha: merged.sha, merged: true, message: 'Pull Request successfully merged' });
+    }
+    if (rest.length === 3 && rest[2] === 'files') {
+      if (method !== 'GET') return notFound(res);
+      if (pull === undefined) return sendError(res, 404, 'Not Found');
+      const head = repo.commits.get(pull.headSha);
+      const headFlat = head === undefined ? new Map() : head.flat;
+      const base = `https://github.local/api/v3/repos/${repo.full_name}`;
+      const files = pullChangedPaths(repo, pull).map((path) => {
+        const entry = headFlat.get(path);
+        return {
+          sha: entry === undefined ? '0'.repeat(40) : entry.sha,
+          filename: path,
+          status: entry === undefined ? 'removed' : 'modified',
+          additions: entry === undefined ? 0 : 1,
+          deletions: 0,
+          changes: 1,
+          blob_url: `${base}/blob/${pull.head}/${path}`,
+          raw_url: `https://github.local/${repo.full_name}/raw/${pull.head}/${path}`,
+          contents_url: `${base}/contents/${path}`,
+        };
+      });
+      return sendJson(res, 200, files);
     }
     if (pull === undefined) return sendError(res, 404, 'Not Found');
     if (method === 'GET') return sendJson(res, 200, pullView(repo, pull));
@@ -386,7 +466,12 @@ export async function handleRest(req, res, path, query, origin) {
     const views = [];
     let current = tip;
     while (current !== null && views.length < perPage(query)) {
-      views.push(commitView(repo, current.sha));
+      const view = commitView(repo, current.sha);
+      // GitHub's list shape nests the commit's own data under `commit`.
+      views.push({
+        ...view,
+        commit: { author: view.author, committer: view.committer, message: view.message, tree: view.tree, comment_count: 0 },
+      });
       current = current.parent === null ? null : repo.commits.get(current.parent) ?? null;
     }
     return sendJson(res, 200, views);

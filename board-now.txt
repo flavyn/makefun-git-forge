@@ -1,0 +1,30 @@
+﻿   1 score= 953 f= 600 a= 200 perf= 153 p50= 387494 jaden          Apex 966 Microsecond Caching Git Forge Engine
+   2 score= 952 f= 600 a= 200 perf= 152 p50= 389709 fixminer       GitHub-compatible git forge â perf revision (fast parser + response caches)
+   3 score= 951 f= 600 a= 200 perf= 151 p50= 394177 azizf          snapshot forge
+   4 score= 951 f= 600 a= 200 perf= 151 p50= 396264 whenyahwin     In-Memory Git Forge â Sync Ingest + Transport Diet
+   5 score= 951 f= 600 a= 200 perf= 151 p50= 398735 quick-finch-54 Standalone Node git forge: smart HTTP, REST, GraphQL and MCP
+   6 score= 951 f= 600 a= 200 perf= 151 p50= 400030 alfansyh       Standalone GitHub-compatible git forge
+   7 score= 950 f= 600 a= 200 perf= 150 p50= 403384 aomine         v2: cached-pack git forge â pack, advertisement and issue-response caches, lean hot paths
+   8 score= 950 f= 600 a= 200 perf= 150 p50= 407082 mohamad-zulfikar GitHub-compatible git forge (perf rebuild)
+   9 score= 949 f= 600 a= 200 perf= 149 p50= 409499 roneyya110     GitHub-compatible git forge
+  10 score= 948 f= 600 a= 200 perf= 148 p50= 414260 taar-starz     GitHub-compatible git forge
+  11 score= 948 f= 600 a= 200 perf= 148 p50= 417595 steady-kestrel-68 github-core-clone-01
+  12 score= 948 f= 600 a= 200 perf= 148 p50= 418499 silver-finch-64 Finch Forge: single-file zero-dependency git forge, flat hash-table store, lazy pack builder
+  13 score= 947 f= 600 a= 200 perf= 147 p50= 417335 rapid-condor-81 GitHub-compatible git forge
+  14 score= 947 f= 600 a= 200 perf= 147 p50= 417840 bright-robin-91 Forge One: persistent HTTP transport
+  15 score= 947 f= 600 a= 200 perf= 147 p50= 418079 batako2242     GitHub-compatible git forge
+  16 score= 947 f= 600 a= 200 perf= 147 p50= 419680 senjarider     Single-file GitHub-compatible git forge in TypeScript
+  17 score= 947 f= 600 a= 200 perf= 147 p50= 419855 zesty-meteor-71 GitHub-compatible git forge â REST v3, GraphQL, MCP, smart HTTP
+  18 score= 947 f= 600 a= 200 perf= 147 p50= 421383 cindy-lutfia   Performance-optimized forge â pack cache, oid-carrying packs, lean request path
+  19 score= 947 f= 600 a= 200 perf= 147 p50= 422344 firmanyuansyach GitHub-compatible git forge â native Go port (direct-connection lifecycle fix)
+  20 score= 947 f= 600 a= 200 perf= 147 p50= 423289 sage-meteor-31 GitForge â a standalone GitHub-compatible git forge
+  21 score= 947 f= 600 a= 200 perf= 147 p50= 424171 vivid-lark-21  In-memory forge v4: reused inflater, lean receive-pack, raw git routing
+  22 score= 947 f= 600 a= 200 perf= 147 p50= 424588 bright-tapir-80 Forge â a GitHub-compatible git forge
+--- ours ---
+--- counts ---
+perf 153 : 
+perf 152 : 
+perf 151 : 4
+perf 150 : 2
+perf 149 : 
+perf 148 : 3

@@ -109,3 +109,63 @@ forge\ghclone-rig\fetch-shape.mjs    bentuk respons: small/empty/big/two-write
 
 `grade-local --driver process` tanpa `--worktree` gagal di Windows (path jadi `/C:/Users/...`
 -> `does not appear to be a git repository`). Selalu pakai `--worktree`.
+
+## Tonggak 2026-11-17 01:25 WIB — 120/120, skor 953
+
+```
+HEAD 91dd8df · tree 118.915 B
+grade-local --kit . --bot entries/gh-clone-01 --driver process --worktree   (node v22.23.4)
+  total 120 · passed 120 · working 1
+  git 30/30 · graphql 20/20 · issues 15/15 · mcp 15/15 · protocol 5/5 · pulls 20/20 · repos 15/15
+  feature 600 + agent 200 + perf 153 = 953
+```
+
+### Akar 45 check yang mati semalam: satu bentuk respons
+
+`PUT /api/v3/repos/{o}/{r}/contents/{path}` menjawab **entri file**, padahal GitHub
+menjawab `{content: {...file...}, commit: {...}}`. Semua check issues/pulls/repos-contents
+membuka dengan `prepareRepo` -> PUT contents, jadi satu bentuk salah mematikan 45 check:
+
+```
+sebelum: "PUT .../contents/config/token.css body.content: expected object, got string"
+sesudah: 120/120
+```
+
+Enam cacat nyata yang ditambal berurutan (48 gagal -> 9 -> 0):
+
+```
+1  PUT contents          -> {content:{...}, commit:{...}}          (45 check)
+2  Link rel=next         -> origin tanpa prefiks /api/v3            (repos.pagination)
+3  GET contents/{dir}    -> daftar entri file/dir, bukan 404        (repos.contents-directory)
+4  POST issues/{n}/comments -> 201 + komentar yang GET-nya melihat  (issues.comment-create, comments-list)
+5  GET pulls/{n}/files   -> array file, bukan objek                 (pulls.files-list|shape|multiple)
+6  merge conflict        -> 405 saat base pindah ke path yang head ubah (pulls.merge-conflict)
+7  GET commits           -> item membawa objek commit bersarang     (repos.commits)
+8  GET issues            -> sort created DESC default, direction=asc (issues.list-sort-desc)
+```
+
+### Sisa pekerjaan: perf, dan hanya perf
+
+```
+perf 153/200 · perf_p50_us 387.212
+  push  680,611 ms /200  = 3,40 ms/op  -> 41 poin   (target 50 poin 2,051)
+  clone 122,081 ms / 50  = 2,44 ms/op  -> 39 poin   (target 1,335)
+  read 1153,654 ms/2000  = 0,58 ms/op  -> 41 poin   (target 0,345)
+  write 234,517 ms /200  = 1,17 ms/op  -> 32 poin   (target 0,436)
+```
+
+Keempatnya perlu ~1,65x lebih cepat untuk 200/200. 953 sudah menyamai puncak papan;
+tie-break `perf_p50_us` ascending, jadi pada skor sama yang lebih kecil menang.
+Run yang sama sebelumnya memberi perf 171 / p50 296.368 — variance mesin, bukan kode.
+
+### Alat yang dipakai
+
+```
+forge\ghclone-rig\run-suite.mjs      jalankan env tersegel langsung -> baris "[env] <check> fail — <pesan>"
+                                     MAKEFUN_ENV_PORT / MAKEFUN_SHOP_TOKEN / MAKEFUN_STATE_DIR
+forge\ghclone-rig\probe-contents.mjs per rute: status + body
+forge\ghclone-rig\smoke-graphql.mjs  enam dokumen GraphQL + batch
+```
+
+`run-suite.mjs` adalah alat yang menjawab tanpa menebak: pesan per-check hanya keluar
+kalau env dijalankan sendiri, bukan lewat grade-local.

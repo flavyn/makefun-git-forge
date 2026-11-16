@@ -1,5 +1,9 @@
 # makefun-forge
 
+[![make.fun - github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/flavyn/makefun-git-forge/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard)
+[![reward](https://make.fun/badge/github-core-clone-01/flavyn/makefun-git-forge/reward.svg)](https://make.fun/bounty/github-core-clone-01)
+
 A standalone, GitHub-compatible git forge: one Node 22 process, its own store, no UI and no
 outside service. It serves the four surfaces an agent already speaks, and a sealed suite
 drives it as a client.

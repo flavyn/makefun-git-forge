@@ -1,0 +1,199 @@
+﻿{
+  "competition": "github-core-clone-01",
+  "phase": "dev",
+  "driver": "process",
+  "bot": {
+    "path": "D:\\dipsik\\makefun\\entries\\gh-clone-01",
+    "commit": "worktree@0057f789d514",
+    "source": "worktree",
+    "dirty": false,
+    "snapshot_sha256": "b47c9b1d794ce47ec6a27595be9246b2c9fb88fc6199f6c07d33b5e126e1be95"
+  },
+  "status": "finished",
+  "error": null,
+  "result": {
+    "schema": "agent-fun/score/v1",
+    "harness": {
+      "kind": "agent/v1",
+      "version": "harness@53808750a5acdca12347bdcfcfaf6461a14568937f1e2288800e1c0e86f1b270 node v24.19.0"
+    },
+    "scorer_version": "scorer@543971df43503b29d321c0136cae693b7fb0617b651538a4eae0f8e2622721b8 program@99d09372b37860879aafcef3c1d4ede5844073e0a066bcfb111be824f0a8b90d",
+    "image_digest": null,
+    "dataset_sha256": "1665bab2004e695537e073da58f097dc29c62bb77c0573f904dfae67a9a4d1dc",
+    "action_log_sha256": "b9b1081b2991479ad422cb6707b08e5fe1d60b5293a3e2d290028fd30b97b1ee",
+    "seed": "16381585645649055221",
+    "performance": {
+      "kind": "agent/v1",
+      "trials": [
+        {
+          "index": 0,
+          "instance_sha256": "2dbde1d1494af3cbb4bfd5e6cd44b3dbab56c5cc7d158ebb9313d9d93b7737fc",
+          "status": "finished",
+          "scores": {
+            "agent": 200,
+            "feature": 115,
+            "perf": 0,
+            "perf_p50_us": 2786947,
+            "score": 315,
+            "working": 1
+          },
+          "working": true,
+          "requests": 0,
+          "spend_micro_usd": "0",
+          "cassette_sha256": "79a465ed9afdc7537a3847cf861b4b8a741cff926f665d5d56934afa8d706e41",
+          "state_sha256": "5dc2a03873623d44f7cf21b30d6e18aca1e0a47fb8437823ec5185acb08d15da"
+        }
+      ],
+      "scores": {
+        "agent": 200,
+        "feature": 115,
+        "perf": 0,
+        "perf_p50_us": 2786947,
+        "score": 315,
+        "working": 1
+      },
+      "interval": {
+        "level": "0.900000000",
+        "low": null,
+        "high": null
+      },
+      "counts": {
+        "trials": 1,
+        "finished": 1,
+        "timeout": 0,
+        "nondeterministic": 0,
+        "voids_rerun": 0
+      },
+      "working_trials": 1,
+      "spend": {
+        "pricing_rev": "45c98b74084333decd95ac81760727274d419136ce7bd158336eaf0667c03491",
+        "micro_usd": "0",
+        "requests": 0
+      }
+    },
+    "cost": {
+      "pricing_rev": "45c98b74084333decd95ac81760727274d419136ce7bd158336eaf0667c03491",
+      "micro_usd": null,
+      "priced_micro_usd": "0",
+      "lines": 0,
+      "unpriced_lines": 0,
+      "partial_lines": 0,
+      "inconsistent_lines": 0,
+      "tokens": {
+        "input": "0",
+        "output": "0",
+        "cache_read": "0",
+        "cache_write_5m": "0",
+        "cache_write_1h": "0",
+        "reasoning": "0"
+      },
+      "models": [],
+      "provenance": "none"
+    },
+    "authorship": {
+      "algo_version": 11,
+      "lines_total": 1781,
+      "authored": 0,
+      "pasted": 0,
+      "read": 0,
+      "absent": 1781,
+      "authored_coverage": "0.000000000",
+      "micro_usd_per_surviving_line": null,
+      "dead_spend": null
+    },
+    "eligibility": {
+      "ranked": true,
+      "prize_eligible": false,
+      "efficiency_eligible": false,
+      "reasons": [
+        "no_transcripts",
+        "coverage_below_gate",
+        "cost_unpriced"
+      ]
+    },
+    "flags": []
+  },
+  "result_sha256": "646be10556261f9009902e70c8fe66430edc742da3dd023a96d24582eb0e981b",
+  "action_log_sha256": "b9b1081b2991479ad422cb6707b08e5fe1d60b5293a3e2d290028fd30b97b1ee",
+  "l1": {
+    "reproduced": true,
+    "error": null
+  },
+  "mismatches": [
+    "node: the server's harness runs v26.13.1, this one v24.19.0"
+  ],
+  "expected": null,
+  "notes": [
+    "process driver: the agent, the env and the forwarder ran on this machine unisolated, on loopback ports and no trial network, and the score records no image digest; the server runs each trial in its docker sandbox, the agent and the env on an internal network with the forwarder its only way out",
+    "a model answers differently each time, so this result_sha256 is these trials', never the server's: each trial's replay check is what says whether it would count in the final (a nondeterministic trial leaves the run unranked)",
+    "no model was behind the gateway: neither ANTHROPIC_API_KEY, OPENAI_API_KEY nor --gateway was given, and this competition does not require model calls (harness.model_calls: optional), so a model call the entry made met an upstream error, where the server's live pass would have reached the model; to grade an entry that calls one, set one of those keys or give --gateway"
+  ],
+  "stderr_tail": "",
+  "agent": {
+    "mode": "grade",
+    "round": 33447412,
+    "upstream": "no model (no key nor --gateway given, and this competition does not require model calls)",
+    "budget_usd_per_trial": 0.02,
+    "trials": [
+      {
+        "index": 0,
+        "instance_sha256": "2dbde1d1494af3cbb4bfd5e6cd44b3dbab56c5cc7d158ebb9313d9d93b7737fc",
+        "status": "finished",
+        "live": {
+          "status": "live_done",
+          "reason": null,
+          "error": null,
+          "entry": {
+            "ended": "exited",
+            "wall_ms": 74039,
+            "detail": null
+          },
+          "cassette_sha256": "79a465ed9afdc7537a3847cf861b4b8a741cff926f665d5d56934afa8d706e41",
+          "state_sha256": "5dc2a03873623d44f7cf21b30d6e18aca1e0a47fb8437823ec5185acb08d15da",
+          "prompt_sha256": "d4049baf3778442354ad376b0746df357febd609ff94b8c053fe63c93341bb20",
+          "baseline_prompt": false,
+          "spend": {
+            "pricing_rev": "45c98b74084333decd95ac81760727274d419136ce7bd158336eaf0667c03491",
+            "requests": 0,
+            "upstream": 0,
+            "refused": 0,
+            "upstream_errors": 0,
+            "micro_usd": "0",
+            "model_calls": 0
+          },
+          "verdict": null
+        },
+        "replay": {
+          "status": "finished",
+          "reason": null,
+          "error": null,
+          "entry": {
+            "ended": "exited",
+            "wall_ms": 74119,
+            "detail": null
+          },
+          "cassette_sha256": "79a465ed9afdc7537a3847cf861b4b8a741cff926f665d5d56934afa8d706e41",
+          "state_sha256": "5dc2a03873623d44f7cf21b30d6e18aca1e0a47fb8437823ec5185acb08d15da",
+          "prompt_sha256": "d4049baf3778442354ad376b0746df357febd609ff94b8c053fe63c93341bb20",
+          "baseline_prompt": false,
+          "spend": null,
+          "verdict": {
+            "ok": true,
+            "consumed": 0
+          }
+        },
+        "scores": {
+          "agent": 200,
+          "feature": 115,
+          "perf": 0,
+          "perf_p50_us": 2786947,
+          "score": 315,
+          "working": 1
+        },
+        "silent": false,
+        "dir": "C:\\Users\\xywal\\.makefun\\trials\\github-core-clone-01\\01a1e565-d99a-770a-ab38-496d9752d005\\trial-0"
+      }
+    ],
+    "kept": "C:\\Users\\xywal\\.makefun\\trials\\github-core-clone-01\\01a1e565-d99a-770a-ab38-496d9752d005"
+  }
+}

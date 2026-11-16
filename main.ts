@@ -8,7 +8,8 @@ import http from 'node:http';
 import { configure, state } from './src/store.mjs';
 import { handleRest } from './src/rest.mjs';
 import { handleMcp } from './src/mcp.mjs';
-import { sendJson, notFound } from './src/http.mjs';
+import { handleGit } from './src/git.mjs';
+import { sendJson, notFound, readBody } from './src/http.mjs';
 
 configure(process.env);
 
@@ -46,9 +47,30 @@ async function route(req, res) {
     return;
   }
 
-  // GraphQL and the git smart-HTTP transport land here next; until then an unknown route is
-  // the JSON 404 every client expects, and the process stays up.
+  // The git transport: /{owner}/{repo}.git/{info/refs|git-upload-pack|git-receive-pack}
+  const gitAt = path.lastIndexOf('.git');
+  if (gitAt > 0) {
+    const before = path.slice(0, gitAt);
+    const suffix = path.slice(gitAt + 4) === '' ? '/' : path.slice(gitAt + 4);
+    const parts = before.split('/').filter((part) => part !== '');
+    if (parts.length === 2) {
+      await handleGit(req, res, decode(parts[0]), decode(parts[1]), suffix, query, readBody);
+      return;
+    }
+  }
+
+  // GraphQL lands here next; until then an unknown route is the JSON 404 every client expects,
+  // and the process stays up.
   notFound(res);
+}
+
+/** One path segment, decoded (a malformed escape stays as it came). */
+function decode(raw) {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 const server = http.createServer((req, res) => {

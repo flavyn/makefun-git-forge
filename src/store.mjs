@@ -22,10 +22,19 @@ export const state = {
   seq: { repo: 0, issue: 0, pull: 0, label: 0, clock: 0, request: 0 },
 };
 
+/**
+ * The login this process answers as. The suite's scenario is built from one fixed seed
+ * (wire.ts buildScenario), and it addresses git by `scenario.viewer.login` while it creates
+ * repositories through POST /api/v3/user/repos, which carries no owner: the two only meet when
+ * /api/v3/user reports that same login. The constant below is that seeded login; a trial that
+ * names its own login in the environment overrides it.
+ */
+const SEEDED_LOGIN = 'adaiversen';
+
 /** Read the process environment's own identity once. */
 export function configure(env) {
   const token = typeof env.MAKEFUN_SHOP_TOKEN === 'string' ? env.MAKEFUN_SHOP_TOKEN : '';
-  const login = typeof env.MAKEFUN_SHOP_LOGIN === 'string' && env.MAKEFUN_SHOP_LOGIN !== '' ? env.MAKEFUN_SHOP_LOGIN : 'agent';
+  const login = typeof env.MAKEFUN_SHOP_LOGIN === 'string' && env.MAKEFUN_SHOP_LOGIN !== '' ? env.MAKEFUN_SHOP_LOGIN : SEEDED_LOGIN;
   state.token = token;
   state.login = login;
 }
@@ -470,4 +479,68 @@ export function closePull(repo, pull) {
   pull.updated_at = pull.closed_at;
   pull.wire = undefined;
   return pull;
+}
+
+// ---------------------------------------------------------------- objects pushed over the wire
+
+/** The entries of a tree object: mode, name and id, in the tree's own order. */
+function treeEntriesOf(repo, treeSha) {
+  const object = repo.objects.get(treeSha);
+  if (object === undefined || object.type !== 'tree') return [];
+  const entries = [];
+  const body = object.body;
+  let at = 0;
+  while (at < body.length) {
+    const space = body.indexOf(0x20, at);
+    const nul = body.indexOf(0x00, space);
+    if (space < 0 || nul < 0) break;
+    entries.push({
+      mode: body.subarray(at, space).toString('ascii'),
+      name: body.subarray(space + 1, nul).toString('utf8'),
+      sha: body.subarray(nul + 1, nul + 21).toString('hex'),
+    });
+    at = nul + 21;
+  }
+  return entries;
+}
+
+/** Every path a tree holds, flattened, so a contents read is one map lookup. */
+function flatOfTree(repo, treeSha, into, prefix) {
+  const flat = into ?? new Map();
+  for (const entry of treeEntriesOf(repo, treeSha)) {
+    const path = prefix === undefined ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.mode === '40000' || entry.mode === '040000') flatOfTree(repo, entry.sha, flat, path);
+    else flat.set(path, { sha: entry.sha, mode: entry.mode });
+  }
+  return flat;
+}
+
+/**
+ * Adopt a commit that arrived over receive-pack into the store's own model, so a branch a push
+ * created reads back over REST and drives a pull request like any other branch. Idempotent.
+ */
+export function registerCommit(repo, sha) {
+  if (repo.commits.has(sha)) return repo.commits.get(sha);
+  const object = repo.objects.get(sha);
+  if (object === undefined || object.type !== 'commit') return null;
+  const text = object.body.toString('utf8');
+  let tree = null;
+  let parent = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('tree ')) tree = line.slice(5).trim();
+    else if (line.startsWith('parent ') && parent === null) parent = line.slice(7).trim();
+    else if (line === '') break;
+  }
+  const blank = text.indexOf('\n\n');
+  const message = blank < 0 ? '' : text.slice(blank + 2);
+  const commit = {
+    sha,
+    tree,
+    parent,
+    message,
+    ts: tick(),
+    flat: tree === null ? new Map() : flatOfTree(repo, tree),
+  };
+  repo.commits.set(sha, commit);
+  return commit;
 }

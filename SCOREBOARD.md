@@ -210,3 +210,34 @@ menyimpulkan apa pun.
 HEAD 91dd8df · tree 118.915 B · 120/120 · feature 600 + agent 200 · perf 149-153 terukur
 skor 949-953 di Node 22; 971 pada satu run env langsung -> variance mesin, bukan kode
 ```
+
+## Porsi server per beban (diminta lead) — 2026-11-17 01:52 WIB
+
+Satu titik instrumentasi (`res.on('finish')` di salinan entri `forge\perf-run4\bot`), jadi
+keempat beban diukur dengan basis yang sama: dari request masuk sampai respons terkirim.
+
+```
+beban   total ms/op   server ms/op   klien ms/op   porsi server   poin saat itu
+push        4,8061        1,1083         3,6978        23,1%            35
+clone       3,9459        0,9306         3,0153        23,6%            30
+read        0,9010        0,2054         0,6956        22,8%            33
+write       1,0372        0,3460         0,6912        33,4%            34
+```
+
+Run itu `perf 132`, `passed 120/120` (mesin sedang dipakai; angka absolutnya bukan baseline,
+porsi-nya yang dipakai). n per beban: push 600 · clone 200 · read 6000 · write 600.
+
+**Jawaban langsung: tidak ada beban yang porsi server-nya >40%.** Tertinggi `write` 33,4%.
+Klien harness tetap 67-77% di semua beban, dan klien itu juga masuk T_ref.
+
+Efek kalau kerja server dipotong SETENGAH, dihitung pada run yang sama:
+
+```
+push 41->37 poin? tidak: pada run ini 35 -> 37 (+2)
+clone 30 -> 33 (+3) · read 33 -> 35 (+2) · write 34 -> 38 (+4)   total +11 perf
+```
+
+Kalau server dinolkan seluruhnya: klien saja = push 3,70 · clone 3,02 · read 0,696 ·
+write 0,691 ms/op -> masih 39/35/37/42 poin, bukan 50. Artinya **plafon 50 poin per beban
+tidak bisa dicapai dari kode entri di mesin ini, untuk beban apa pun** — lantai klien
+harness sendiri sudah di atas target T_ref/4.

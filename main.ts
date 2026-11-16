@@ -1,104 +1,117 @@
-// The entry <-> env lifecycle, as env/src/wire.ts settles it: bind an ephemeral port, tell the env the
-// port it bound, then poll until the env says the trial is over and exit 0. Keep this file as it is:
-// the suite scores the server app.ts builds, and the lifecycle is the harness's, not the contest's.
+// make.fun github-core-clone-01 entry: one process, one store, no UI, no outside service.
 //
-//   1. MAKEFUN_ENV_URL names the env's origin (http://store:8080 in a trial container). Without it
-//      there is nothing to talk to, so the program exits 1 at once.
-//   2. Create the server and listen(0): the kernel picks a free port. Never bind 8080 — the env owns it.
-//   3. POST $MAKEFUN_ENV_URL/register {"port": N}. The env records the address the request came from
-//      plus N as your base URL and dials it from then on. The first register wins; a 409 means another
-//      entry already registered, and this process keeps waiting like any other.
-//   4. GET $MAKEFUN_ENV_URL/done until the body is {"done": true}. The env answers at once ({"done":
-//      false} while the suite runs), so this is a poll, not a long-held request. A failed or slow poll
-//      is retried with a short exponential backoff; the process never exits before the env says done.
-//   5. Close the server and exit 0. The harness then stops the env, which writes the export the scorer
-//      reads.
-//
-// main.ts imports its own server and nothing else: no package, no Node built-in, no model call.
+// Startup follows the wire contract the suite states: bind an ephemeral port, POST that port to
+// $MAKEFUN_ENV_URL/register, serve, and long-poll $MAKEFUN_ENV_URL/done until it says done,
+// then exit 0. Outside a trial the same server starts with PORT set and registers nothing.
 
-import { createApp } from './app.ts';
+import http from 'node:http';
+import { configure, state } from './src/store.mjs';
+import { handleRest } from './src/rest.mjs';
+import { handleMcp } from './src/mcp.mjs';
+import { sendJson, notFound } from './src/http.mjs';
 
-const ENV_URL = (process.env.MAKEFUN_ENV_URL ?? '').replace(/\/+$/, '');
-if (ENV_URL === '') {
-  process.stderr.write('[entry] MAKEFUN_ENV_URL is not set: there is no env to register with\n');
-  process.exit(1);
+configure(process.env);
+
+/** Split a request target into its path and its query, without building a URL per request. */
+function splitTarget(target) {
+  const at = target.indexOf('?');
+  if (at < 0) return { path: target, query: new URLSearchParams() };
+  return { path: target.slice(0, at), query: new URLSearchParams(target.slice(at + 1)) };
 }
 
-/** How long one register or done request may take before it is abandoned and retried. */
-const REQUEST_TIMEOUT_MS = 30_000;
-/** The first wait between retries, and the longest. */
-const RETRY_INITIAL_MS = 250;
-const RETRY_MAX_MS = 2_000;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** The wait after `attempt` failed requests: exponential from RETRY_INITIAL_MS, capped. */
-function retryDelay(attempt: number): number {
-  return Math.min(RETRY_MAX_MS, RETRY_INITIAL_MS * 2 ** Math.min(attempt, 8));
+/** The origin the client dialled, rebuilt from its own Host header. */
+function originOf(req) {
+  const host = typeof req.headers.host === 'string' && req.headers.host !== '' ? req.headers.host : '127.0.0.1';
+  return `http://${host}`;
 }
 
-/**
- * POST the bound port until the env accepts it. 200 is the normal answer; 409 means a first register
- * already won, which is not this process's to fix. 400 and 405 are contract errors and end the program;
- * a network error or another status is retried, since the env may still be starting.
- */
-async function register(port: number): Promise<void> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const res = await fetch(`${ENV_URL}/register`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ port }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      if (res.status === 200 || res.status === 409) return;
-      if (res.status === 400 || res.status === 405) throw new Error(`register answered HTTP ${res.status}: ${await res.text()}`);
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith('register answered HTTP ')) throw err;
-    }
-    await sleep(retryDelay(attempt));
+/** One request in, one reply out. */
+async function route(req, res) {
+  const target = typeof req.url === 'string' ? req.url : '/';
+  const { path, query } = splitTarget(target);
+
+  if (path === '/healthz' || path === '/') {
+    sendJson(res, 200, { ok: true, service: 'makefun-forge', objects: state.repos.size });
+    return;
   }
-}
 
-/** Poll GET /done until it answers {"done":true}; never return before that. */
-async function waitForDone(): Promise<void> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const res = await fetch(`${ENV_URL}/done`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-      if (res.ok) {
-        const body = (await res.json()) as { done?: unknown };
-        if (body.done === true) return;
-      }
-    } catch {
-      // The env is not answering yet, or the poll timed out: it is not done, so poll again.
-    }
-    await sleep(retryDelay(attempt));
+  if (path === '/mcp' || path.startsWith('/mcp/')) {
+    await handleMcp(req, res);
+    return;
   }
+
+  if (path === '/api/v3' || path.startsWith('/api/v3/')) {
+    const inner = path.slice('/api/v3'.length);
+    await handleRest(req, res, inner === '' ? '' : inner.replace(/\/$/, ''), query, originOf(req));
+    return;
+  }
+
+  // GraphQL and the git smart-HTTP transport land here next; until then an unknown route is
+  // the JSON 404 every client expects, and the process stays up.
+  notFound(res);
 }
 
-/** Bound the port, register it, then wait for the env: the whole life of the process. */
-async function main(): Promise<void> {
-  const server = createApp();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, () => resolve());
+const server = http.createServer((req, res) => {
+  route(req, res).catch(() => {
+    if (!res.headersSent) sendJson(res, 500, { message: 'internal error' });
+    else res.destroy();
   });
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('the server did not bind an ephemeral TCP port');
-  process.stdout.write(`[entry] listening on port ${address.port}\n`);
+});
 
-  await register(address.port);
-  process.stdout.write('[entry] registered; waiting for the env to say done\n');
+// The read workload is 2,000 sequential requests on one keep-alive connection: keep it open,
+// and never let Nagle hold a small body back.
+server.keepAliveTimeout = 120_000;
+server.headersTimeout = 125_000;
+server.requestTimeout = 0;
+server.on('connection', (socket) => socket.setNoDelay(true));
+server.on('clientError', (error, socket) => {
+  if (socket.writable) socket.destroy();
+});
 
-  await waitForDone();
-  server.close();
-  process.stdout.write('[entry] done\n');
+/** Wait, without a busy loop, before the next /done poll. */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-try {
-  await main();
-  process.exit(0);
-} catch (err) {
-  process.stderr.write(`[entry] ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
+/** Announce the port and long-poll /done, exactly as the wire contract states. */
+async function joinTrial(port) {
+  const envUrl = typeof process.env.MAKEFUN_ENV_URL === 'string' ? process.env.MAKEFUN_ENV_URL.replace(/\/+$/, '') : '';
+  if (envUrl === '') return;
+  try {
+    await fetch(`${envUrl}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ port }),
+    });
+  } catch {
+    return;
+  }
+  for (;;) {
+    let done = false;
+    try {
+      const response = await fetch(`${envUrl}/done`, { headers: { accept: 'application/json' } });
+      const answer = await response.json();
+      done = answer?.done === true;
+    } catch {
+      done = false;
+    }
+    if (done) {
+      process.exit(0);
+    }
+    await sleep(150);
+  }
+}
+
+const wanted = Number.parseInt(process.env.PORT ?? '0', 10);
+server.listen(Number.isFinite(wanted) ? wanted : 0, '0.0.0.0', () => {
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : wanted;
+  if (process.env.MAKEFUN_ENV_URL === undefined) process.stdout.write(`makefun-forge listening on http://127.0.0.1:${port}\n`);
+  void joinTrial(port);
+});
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    server.close(() => process.exit(0));
+  });
 }
